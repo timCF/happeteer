@@ -1,18 +1,27 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Happeteer
-    ( scrap
+    ( resolveURI
     ) where
 
 import           Control.Concurrent
 import           Control.Monad
+import qualified Data.Text          as Text
 import           GHC.IO.Handle
 import           System.Exit
 import           System.Process
+import qualified Text.URI           as URI
 
-data Scraped = Scraped {
+data AbstractScraped = AbstractScraped {
   exitCode :: ExitCode,
   stdOut   :: String,
   stdErr   :: String
-} deriving (Show)
+}
+
+data Scraped content = Scraped {
+  content  :: Maybe content,
+  abstract :: AbstractScraped
+}
 
 data TimeMS = TimeMS Integer deriving (Eq, Ord, Show)
 instance Num TimeMS where
@@ -25,6 +34,29 @@ instance Num TimeMS where
     | t < 0 = TimeMS (-1)
     | otherwise = TimeMS 1
   fromInteger = TimeMS
+
+-- resolve URL (follow redirect etc)
+resolveURI :: URI.URI -> IO (Scraped URI.URI)
+resolveURI uri = do
+  abstract_scraped <- scrap "js/resolve-uri.js" [URI.renderStr uri]
+  case abstract_scraped of
+    AbstractScraped{
+      exitCode = ExitSuccess,
+      stdOut   = std_out
+    } -> do
+      --
+      --  TODO : URI.mkURI can throw exception here!!!
+      --
+      result_uri <- URI.mkURI $ Text.strip $ Text.pack std_out
+      return Scraped{
+        content  = Just result_uri,
+        abstract = abstract_scraped
+      }
+    AbstractScraped{} ->
+      return Scraped{
+        content  = Nothing,
+        abstract = abstract_scraped
+      }
 
 -- TimeMS type utils
 sleepMS :: TimeMS -> IO ()
@@ -55,10 +87,11 @@ safeWaitForProcess ph elapsed_time
     processLimit = TimeMS 60000000
     processInterval = TimeMS 500000
 
-scrap :: IO Scraped
-scrap =
+-- abstract scraping of something
+scrap :: String -> [String] -> IO AbstractScraped
+scrap script params =
   let
-    process_spec = (shell "sleep 10; echo hello"){
+    process_spec = (proc "node" ([script] ++ params ++ ["--no-sandbox"])){
       std_out = CreatePipe,
       std_err = CreatePipe
     }
@@ -67,7 +100,7 @@ scrap =
     exit_code <- safeWaitForProcess ph (TimeMS 0)
     std_out <- hGetContents std_out_h
     std_err <- hGetContents std_err_h
-    return Scraped{
+    return AbstractScraped{
       exitCode = exit_code,
       stdOut   = std_out,
       stdErr   = std_err
