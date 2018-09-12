@@ -4,24 +4,30 @@ module Happeteer
     ( resolveURI
     ) where
 
-import           Control.Concurrent
-import           Control.Monad
-import qualified Data.Text          as Text
-import           GHC.IO.Handle
-import           System.Exit
-import           System.Process
-import qualified Text.URI           as URI
+import qualified Control.Concurrent (threadDelay)
+import qualified Data.Text          (pack, strip)
+import qualified GHC.IO.Handle      (hGetContents)
+import qualified System.Exit        (ExitCode,
+                                     ExitCode (ExitFailure, ExitSuccess))
+import qualified System.Process     (CreateProcess (..), ProcessHandle,
+                                     StdStream (CreatePipe), createProcess,
+                                     getProcessExitCode, proc, terminateProcess)
+import qualified Text.URI           (URI, mkURI, renderStr)
+
+-- import qualified Control.Monad.Catch (MonadThrow (..))
+-- import qualified Data.Text           (Text)
+-- {-# SPECIALIZE Text.URI.mkURI :: Control.Monad.Catch.MonadThrow m0 => Data.Text.Text -> m0 Text.URI.URI #-}
 
 data AbstractScraped = AbstractScraped {
-  exitCode :: ExitCode,
+  exitCode :: System.Exit.ExitCode,
   stdOut   :: String,
   stdErr   :: String
-}
+} deriving (Show)
 
 data Scraped content = Scraped {
   content  :: Maybe content,
   abstract :: AbstractScraped
-}
+} deriving (Show)
 
 data TimeMS = TimeMS Integer deriving (Eq, Ord, Show)
 instance Num TimeMS where
@@ -36,18 +42,18 @@ instance Num TimeMS where
   fromInteger = TimeMS
 
 -- resolve URL (follow redirect etc)
-resolveURI :: URI.URI -> IO (Scraped URI.URI)
+resolveURI :: Text.URI.URI -> IO (Scraped Text.URI.URI)
 resolveURI uri = do
-  abstract_scraped <- scrap "js/resolve-uri.js" [URI.renderStr uri]
+  abstract_scraped <- scrap "js/resolve-uri.js" [Text.URI.renderStr uri]
   case abstract_scraped of
     AbstractScraped{
-      exitCode = ExitSuccess,
+      exitCode = System.Exit.ExitSuccess,
       stdOut   = std_out
     } -> do
       --
-      --  TODO : URI.mkURI can throw exception here!!!
+      --  TODO : Text.URI.mkURI can throw exception here!!!
       --
-      result_uri <- URI.mkURI $ Text.strip $ Text.pack std_out
+      result_uri <- Text.URI.mkURI $ Data.Text.strip $ Data.Text.pack std_out
       return Scraped{
         content  = Just result_uri,
         abstract = abstract_scraped
@@ -61,22 +67,22 @@ resolveURI uri = do
 -- TimeMS type utils
 sleepMS :: TimeMS -> IO ()
 sleepMS (TimeMS t) =
-  threadDelay $ fromIntegral t
+  Control.Concurrent.threadDelay $ fromIntegral t
 
 -- Wait for process 1 min and if no exit - terminate it
-safeWaitForProcess :: ProcessHandle -> TimeMS -> IO ExitCode
+safeWaitForProcess :: System.Process.ProcessHandle -> TimeMS -> IO System.Exit.ExitCode
 safeWaitForProcess ph elapsed_time
   | elapsed_time > processLimit = do
-    _ <- terminateProcess ph
-    mb_exit_code <- getProcessExitCode ph
+    _ <- System.Process.terminateProcess ph
+    mb_exit_code <- System.Process.getProcessExitCode ph
     case mb_exit_code of
       Just _ ->
-        return $ ExitFailure 504
+        return $ System.Exit.ExitFailure 504
       Nothing -> do
         _ <- sleepMS processInterval
         safeWaitForProcess ph elapsed_time
   | otherwise = do
-    mb_exit_code <- getProcessExitCode ph
+    mb_exit_code <- System.Process.getProcessExitCode ph
     case mb_exit_code of
       Just exit_code ->
         return exit_code
@@ -91,15 +97,16 @@ safeWaitForProcess ph elapsed_time
 scrap :: String -> [String] -> IO AbstractScraped
 scrap script params =
   let
-    process_spec = (proc "node" ([script] ++ params ++ ["--no-sandbox"])){
-      std_out = CreatePipe,
-      std_err = CreatePipe
+    process_spec = (System.Process.proc "node" ([script] ++ params ++ ["--no-sandbox"])){
+      System.Process.std_out = System.Process.CreatePipe,
+      System.Process.std_err = System.Process.CreatePipe
     }
+
   in do
-    (Nothing, Just std_out_h, Just std_err_h, ph) <- createProcess process_spec
+    (Nothing, Just std_out_h, Just std_err_h, ph) <- System.Process.createProcess process_spec
     exit_code <- safeWaitForProcess ph (TimeMS 0)
-    std_out <- hGetContents std_out_h
-    std_err <- hGetContents std_err_h
+    std_out <- GHC.IO.Handle.hGetContents std_out_h
+    std_err <- GHC.IO.Handle.hGetContents std_err_h
     return AbstractScraped{
       exitCode = exit_code,
       stdOut   = std_out,
