@@ -40,12 +40,6 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - JuicyPixels-3.3.1
-# - megaparsec-7.0.0
-# - profunctors-5.3
-# - parser-combinators-1.0.0
-
-ghc-options:
-  happeteer: -O2 -Weverything -Wno-unsafe -Wno-implicit-prelude -Wno-safe -Werror
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

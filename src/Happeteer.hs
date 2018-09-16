@@ -2,7 +2,9 @@
 
 module Happeteer
     ( scrapURL,
-      scrapIMG
+      scrapIMG,
+      AbstractScraped (..),
+      Scraped (..)
     ) where
 
 import qualified Codec.Picture          (DynamicImage, decodeImageWithMetadata)
@@ -24,12 +26,12 @@ data AbstractScraped = AbstractScraped {
   exitCode :: System.Exit.ExitCode,
   stdOut   :: String,
   stdErr   :: String
-} deriving (Show)
+} deriving (Show, Eq, Ord)
 
 data Scraped content = Scraped {
   content  :: Either String content,
   abstract :: AbstractScraped
-} deriving (Show)
+} deriving (Show, Eq, Ord)
 
 -- resolve URL (follow redirect etc)
 scrapURL :: Network.URL.URL -> IO (Scraped Network.URL.URL)
