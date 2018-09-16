@@ -1,18 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Happeteer
-    ( resolveURL
+    ( resolveURL,
+      fetchIMG
     ) where
 
-import qualified Control.Concurrent (threadDelay)
-import qualified Data.Text          (pack, strip, unpack)
-import qualified GHC.IO.Handle      (hGetContents)
-import qualified Network.URL        (URL, exportURL, importURL)
-import qualified System.Exit        (ExitCode,
-                                     ExitCode (ExitFailure, ExitSuccess))
-import qualified System.Process     (CreateProcess (..), ProcessHandle,
-                                     StdStream (CreatePipe), createProcess,
-                                     getProcessExitCode, proc, terminateProcess)
+import qualified Control.Concurrent     (threadDelay)
+import qualified Data.ByteString        (ByteString)
+import qualified Data.ByteString.Base64 (decode)
+import qualified Data.ByteString.Char8  (pack)
+import qualified Data.Text              (pack, strip, unpack)
+import qualified GHC.IO.Handle          (hGetContents)
+import qualified Network.URL            (URL, exportURL, importURL)
+import qualified System.Exit            (ExitCode,
+                                         ExitCode (ExitFailure, ExitSuccess))
+import qualified System.Process         (CreateProcess (..), ProcessHandle,
+                                         StdStream (CreatePipe), createProcess,
+                                         getProcessExitCode, proc,
+                                         terminateProcess)
 
 data AbstractScraped = AbstractScraped {
   exitCode :: System.Exit.ExitCode,
@@ -21,9 +26,35 @@ data AbstractScraped = AbstractScraped {
 } deriving (Show)
 
 data Scraped content = Scraped {
-  content  :: Maybe content,
+  content  :: Either String content,
   abstract :: AbstractScraped
 } deriving (Show)
+
+fetchIMG :: Network.URL.URL -> IO (Scraped Data.ByteString.ByteString)
+fetchIMG url = do
+  abstract_scraped <- scrap "js/fetch-image-base64.js" [Network.URL.exportURL url]
+  case abstract_scraped of
+    AbstractScraped{
+      exitCode = System.Exit.ExitSuccess,
+      stdOut   = std_out
+    } ->
+      let
+        std_out_bytes = Data.ByteString.Base64.decode $ Data.ByteString.Char8.pack std_out
+      in
+        --
+        --  TODO : !!!
+        --
+        return Scraped{
+          content  = std_out_bytes,
+          abstract = abstract_scraped
+        }
+    AbstractScraped{
+      exitCode = exit_code
+    } ->
+      return Scraped{
+        content  = Left $ "bad nodejs exit code: " ++ show exit_code,
+        abstract = abstract_scraped
+      }
 
 -- resolve URL (follow redirect etc)
 resolveURL :: Network.URL.URL -> IO (Scraped Network.URL.URL)
@@ -34,13 +65,22 @@ resolveURL url = do
       exitCode = System.Exit.ExitSuccess,
       stdOut   = std_out
     } ->
+      case Network.URL.importURL std_out of
+        Just parsed_url ->
+          return Scraped{
+            content  = Right parsed_url,
+            abstract = abstract_scraped
+          }
+        Nothing ->
+          return Scraped{
+            content  = Left $ "can not parse URL, bad stdout: " ++ std_out,
+            abstract = abstract_scraped
+          }
+    AbstractScraped{
+      exitCode = exit_code
+    } ->
       return Scraped{
-        content  = Network.URL.importURL $ Data.Text.unpack $ Data.Text.strip $ Data.Text.pack std_out,
-        abstract = abstract_scraped
-      }
-    AbstractScraped{} ->
-      return Scraped{
-        content  = Nothing,
+        content  = Left $ "bad nodejs exit code: " ++ show exit_code,
         abstract = abstract_scraped
       }
 
@@ -90,6 +130,6 @@ scrap script params =
     std_err <- GHC.IO.Handle.hGetContents std_err_h
     return AbstractScraped{
       exitCode = exit_code,
-      stdOut   = std_out,
+      stdOut   = Data.Text.unpack $ Data.Text.strip $ Data.Text.pack std_out,
       stdErr   = std_err
     }
