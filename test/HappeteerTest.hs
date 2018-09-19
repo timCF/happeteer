@@ -14,14 +14,20 @@ import           Codec.Picture          (DynamicImage, readImageWithMetadata)
 import           Codec.Picture.Metadata as Meta (Keys (DpiX, DpiY, Format, Height, Width),
                                                  Metadatas, lookup)
 
+newtype IMG = IMG DynamicImage deriving (Eq)
+
+instance Show IMG where
+  show _ = "<DynamicImage>"
+
 main :: IO ()
 main = do
   scraped_url <- scrapURL raw_url
   scraped_img <- scrapIMG img_url
-  Right (_, expected_img_metadatas) <- readImageWithMetadata "test/wiki-logo.jpg"
+  Right (expected_img_value, expected_img_metadatas) <- readImageWithMetadata "test/wiki-logo.jpg"
   defaultMain (testGroup "Happeteer Tests" (
     scrapURLTest scraped_url ++
-    scrapIMGMetadatasTest scraped_img expected_img_metadatas))
+    scrapIMGMetadatasTest scraped_img expected_img_metadatas ++
+    scrapIMGValueTest scraped_img expected_img_value))
   where
     Just raw_url = importURL "http://google.com"
     Just img_url = importURL "https://upload.wikimedia.org/wikipedia/commons/3/31/Wiki_logo_Nupedia.jpg"
@@ -51,4 +57,9 @@ scrapIMGMetadatasTest Scraped{content = Right (_, scraped_metadatas)} expected_m
     testCase "Testing scrapIMG Metadatas Format" (assertEqual "Format" (Meta.lookup Format scraped_metadatas) (Meta.lookup Format expected_metadatas)),
     testCase "Testing scrapIMG Metadatas Width" (assertEqual "Width" (Meta.lookup Width scraped_metadatas) (Meta.lookup Width expected_metadatas)),
     testCase "Testing scrapIMG Metadatas Height" (assertEqual "Height" (Meta.lookup Height scraped_metadatas) (Meta.lookup Height expected_metadatas))
+  ]
+
+scrapIMGValueTest :: Scraped (DynamicImage, Metadatas) -> DynamicImage -> [TestTree]
+scrapIMGValueTest Scraped{content = Right (scraped_image, _)} expected_image = [
+    testCase "Testing scrapIMG Value" (assertEqual "DynamicImage" (IMG scraped_image) (IMG expected_image))
   ]
