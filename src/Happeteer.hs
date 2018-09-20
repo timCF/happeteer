@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Happeteer
-    ( scrapURL,
+    ( scrapData,
+      scrapURL,
       scrapIMG,
       AbstractScraped (..),
       Scraped (..),
@@ -38,26 +39,23 @@ data Scraped content = Scraped {
   abstract :: AbstractScraped
 } deriving (Show, Eq, Ord)
 
--- resolve URL (follow redirect etc)
-scrapURL :: Network.URL.URL -> IO (Scraped Network.URL.URL)
-scrapURL url = do
-  abstract_scraped <- scrap (NodeScript "js/scrap-url.js") [NodeArg $ Network.URL.exportURL url]
+--------------------------
+-- public API functions --
+--------------------------
+
+-- scrap some data t
+scrapData :: Network.URL.URL -> NodeScript -> (String -> Either String t) -> IO (Scraped t)
+scrapData url node_script parser = do
+  abstract_scraped <- scrap node_script [NodeArg $ Network.URL.exportURL url]
   case abstract_scraped of
     AbstractScraped{
       exitCode = System.Exit.ExitSuccess,
       stdOut   = std_out
     } ->
-      case Network.URL.importURL std_out of
-        Just parsed_url ->
-          return Scraped{
-            content  = Right parsed_url,
-            abstract = abstract_scraped
-          }
-        Nothing ->
-          return Scraped{
-            content  = Left $ "can not parse URL, bad stdout: " ++ std_out,
-            abstract = abstract_scraped
-          }
+      return Scraped{
+        content  = parser std_out,
+        abstract = abstract_scraped
+      }
     AbstractScraped{
       exitCode = exit_code
     } ->
@@ -66,33 +64,31 @@ scrapURL url = do
         abstract = abstract_scraped
       }
 
+-- resolve URL (follow redirect etc)
+scrapURL :: Network.URL.URL -> IO (Scraped Network.URL.URL)
+scrapURL url =
+  scrapData url (NodeScript "js/scrap-url.js") parser
+  where
+    parser :: String -> Either String Network.URL.URL
+    parser std_out =
+      case Network.URL.importURL std_out of
+        Just parsed_url -> Right parsed_url
+        Nothing -> Left $ "can not parse URL, bad stdout: " ++ std_out
+
 -- download picture
 scrapIMG :: Network.URL.URL -> IO (Scraped (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas))
-scrapIMG url = do
-  abstract_scraped <- scrap (NodeScript "js/scrap-image-base64.js") [NodeArg $ Network.URL.exportURL url]
-  case abstract_scraped of
-    AbstractScraped{
-      exitCode = System.Exit.ExitSuccess,
-      stdOut   = std_out
-    } ->
+scrapIMG url =
+  scrapData url (NodeScript "js/scrap-image-base64.js") parser
+  where
+    parser :: String -> Either String (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas)
+    parser std_out =
       case Data.ByteString.Base64.decode $ Data.ByteString.Char8.pack std_out of
-        Right std_out_bytes ->
-          return Scraped{
-            content  = Codec.Picture.decodeImageWithMetadata std_out_bytes,
-            abstract = abstract_scraped
-          }
-        Left error_message ->
-          return Scraped{
-            content  = Left error_message,
-            abstract = abstract_scraped
-          }
-    AbstractScraped{
-      exitCode = exit_code
-    } ->
-      return Scraped{
-        content  = Left $ "bad nodejs exit code: " ++ show exit_code,
-        abstract = abstract_scraped
-      }
+        Right std_out_bytes -> Codec.Picture.decodeImageWithMetadata std_out_bytes
+        Left error_message -> Left error_message
+
+-----------------------
+-- private functions --
+-----------------------
 
 sleepMS :: Integer -> IO ()
 sleepMS t =
@@ -124,7 +120,7 @@ safeWaitForProcess ph elapsed_time
     processInterval :: Integer
     processInterval = 500000
 
--- abstract scraping of something
+-- abstract scraping of stdout
 scrap :: NodeScript -> [NodeArg] -> IO AbstractScraped
 scrap (NodeScript string_script) params =
   let
