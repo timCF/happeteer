@@ -4,7 +4,9 @@ module Happeteer
     ( scrapURL,
       scrapIMG,
       AbstractScraped (..),
-      Scraped (..)
+      Scraped (..),
+      NodeScript (..),
+      NodeArg (..)
     ) where
 
 import qualified Codec.Picture          (DynamicImage, decodeImageWithMetadata)
@@ -22,6 +24,9 @@ import qualified System.Process         (CreateProcess (..), ProcessHandle,
                                          getProcessExitCode, proc,
                                          terminateProcess)
 
+newtype NodeScript = NodeScript String
+newtype NodeArg = NodeArg String
+
 data AbstractScraped = AbstractScraped {
   exitCode :: System.Exit.ExitCode,
   stdOut   :: String,
@@ -36,7 +41,7 @@ data Scraped content = Scraped {
 -- resolve URL (follow redirect etc)
 scrapURL :: Network.URL.URL -> IO (Scraped Network.URL.URL)
 scrapURL url = do
-  abstract_scraped <- scrap "js/scrap-url.js" [Network.URL.exportURL url]
+  abstract_scraped <- scrap (NodeScript "js/scrap-url.js") [NodeArg $ Network.URL.exportURL url]
   case abstract_scraped of
     AbstractScraped{
       exitCode = System.Exit.ExitSuccess,
@@ -64,7 +69,7 @@ scrapURL url = do
 -- download picture
 scrapIMG :: Network.URL.URL -> IO (Scraped (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas))
 scrapIMG url = do
-  abstract_scraped <- scrap "js/scrap-image-base64.js" [Network.URL.exportURL url]
+  abstract_scraped <- scrap (NodeScript "js/scrap-image-base64.js") [NodeArg $ Network.URL.exportURL url]
   case abstract_scraped of
     AbstractScraped{
       exitCode = System.Exit.ExitSuccess,
@@ -120,10 +125,11 @@ safeWaitForProcess ph elapsed_time
     processInterval = 500000
 
 -- abstract scraping of something
-scrap :: String -> [String] -> IO AbstractScraped
-scrap script params =
+scrap :: NodeScript -> [NodeArg] -> IO AbstractScraped
+scrap (NodeScript string_script) params =
   let
-    process_spec = (System.Process.proc "node" ([script] ++ params ++ ["--no-sandbox"])){
+    string_params = map (\(NodeArg x) -> x) params
+    process_spec = (System.Process.proc "node" (string_script:string_params ++ ["--no-sandbox"])){
       System.Process.std_out = System.Process.CreatePipe,
       System.Process.std_err = System.Process.CreatePipe
     }
