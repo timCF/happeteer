@@ -7,6 +7,7 @@ import           Test.Tasty             (TestTree, defaultMain, testGroup)
 import           Test.Tasty.HUnit       (assertEqual, testCase)
 
 import           Happeteer              (AbstractScraped (AbstractScraped, exitCode, stdErr, stdOut),
+                                         NodeArgs (NodeArgs, proxyHost, targetURL),
                                          Scraped (Scraped, abstract, content),
                                          scrapIMG, scrapURL)
 
@@ -21,8 +22,8 @@ instance Show IMG where
 
 main :: IO ()
 main = do
-  scraped_url <- scrapURL raw_url
-  scraped_img <- scrapIMG img_url
+  scraped_url <- scrapURL NodeArgs{targetURL = raw_url, proxyHost = Nothing}
+  scraped_img <- scrapIMG NodeArgs{targetURL = img_url, proxyHost = Nothing}
   Right (expected_img_value, expected_img_metadatas) <- readImageWithMetadata "test/wiki-logo.jpg"
   defaultMain (testGroup "Happeteer Tests" (
     scrapURLTest scraped_url ++

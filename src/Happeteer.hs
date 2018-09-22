@@ -7,7 +7,7 @@ module Happeteer
       AbstractScraped (..),
       Scraped (..),
       NodeScript (..),
-      NodeArg (..)
+      NodeArgs (..)
     ) where
 
 import qualified Codec.Picture          (DynamicImage, decodeImageWithMetadata)
@@ -17,7 +17,8 @@ import qualified Data.ByteString.Base64 (decode)
 import qualified Data.ByteString.Char8  (pack)
 import qualified Data.Text              (pack, strip, unpack)
 import qualified GHC.IO.Handle          (hGetContents)
-import qualified Network.URL            (URL, exportURL, importURL)
+import qualified Network.URL            (Host, URL, exportHost, exportURL,
+                                         importURL)
 import qualified System.Exit            (ExitCode,
                                          ExitCode (ExitFailure, ExitSuccess))
 import qualified System.Process         (CreateProcess (..), ProcessHandle,
@@ -26,7 +27,11 @@ import qualified System.Process         (CreateProcess (..), ProcessHandle,
                                          terminateProcess)
 
 newtype NodeScript = NodeScript String
-newtype NodeArg = NodeArg String
+
+data NodeArgs = NodeArgs {
+  targetURL :: Network.URL.URL,
+  proxyHost :: Maybe Network.URL.Host
+}
 
 data AbstractScraped = AbstractScraped {
   exitCode :: System.Exit.ExitCode,
@@ -44,9 +49,9 @@ data Scraped content = Scraped {
 --------------------------
 
 -- scrap some data t
-scrapData :: Network.URL.URL -> NodeScript -> (String -> Either String t) -> IO (Scraped t)
-scrapData url node_script parser = do
-  abstract_scraped <- scrap node_script [NodeArg $ Network.URL.exportURL url]
+scrapData :: NodeScript -> NodeArgs -> (String -> Either String t) -> IO (Scraped t)
+scrapData node_script node_args parser = do
+  abstract_scraped <- scrap node_script node_args
   case abstract_scraped of
     AbstractScraped{
       exitCode = System.Exit.ExitSuccess,
@@ -65,9 +70,9 @@ scrapData url node_script parser = do
       }
 
 -- resolve URL (follow redirect etc)
-scrapURL :: Network.URL.URL -> IO (Scraped Network.URL.URL)
-scrapURL url =
-  scrapData url (NodeScript "js/scrap-url.js") parser
+scrapURL :: NodeArgs -> IO (Scraped Network.URL.URL)
+scrapURL node_args =
+  scrapData (NodeScript "js/scrap-url.js") node_args parser
   where
     parser :: String -> Either String Network.URL.URL
     parser std_out =
@@ -76,9 +81,9 @@ scrapURL url =
         Nothing -> Left $ "can not parse URL, bad stdout: " ++ std_out
 
 -- download picture
-scrapIMG :: Network.URL.URL -> IO (Scraped (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas))
-scrapIMG url =
-  scrapData url (NodeScript "js/scrap-image-base64.js") parser
+scrapIMG :: NodeArgs -> IO (Scraped (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas))
+scrapIMG node_args =
+  scrapData (NodeScript "js/scrap-image-base64.js") node_args parser
   where
     parser :: String -> Either String (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas)
     parser std_out =
@@ -121,11 +126,14 @@ safeWaitForProcess ph elapsed_time
     processInterval = 500000
 
 -- abstract scraping of stdout
-scrap :: NodeScript -> [NodeArg] -> IO AbstractScraped
-scrap (NodeScript string_script) params =
+scrap :: NodeScript -> NodeArgs -> IO AbstractScraped
+scrap (NodeScript string_script) NodeArgs{targetURL = target_url, proxyHost = mb_proxy_host} =
   let
-    string_params = map (\(NodeArg x) -> x) params
-    process_spec = (System.Process.proc "node" (string_script:string_params ++ ["--no-sandbox"])){
+    proxy_host =
+      case mb_proxy_host of
+        Just host -> ["--proxy-server=" ++ Network.URL.exportHost host]
+        Nothing   -> []
+    process_spec = (System.Process.proc "node" ([string_script, Network.URL.exportURL target_url] ++ proxy_host ++ ["--no-sandbox"])){
       System.Process.std_out = System.Process.CreatePipe,
       System.Process.std_err = System.Process.CreatePipe
     }
