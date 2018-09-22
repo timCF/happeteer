@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
 import           Network.URL            (URL, importURL)
@@ -8,12 +10,15 @@ import           Test.Tasty.HUnit       (assertEqual, testCase)
 
 import           Happeteer              (AbstractScraped (AbstractScraped, exitCode, stdErr, stdOut),
                                          NodeArgs (NodeArgs, proxyHost, targetURL),
+                                         NodeScript (NodeScript),
                                          Scraped (Scraped, abstract, content),
-                                         scrapIMG, scrapURL)
+                                         scrapIMG, scrapJSON, scrapURL)
 
 import           Codec.Picture          (DynamicImage, readImageWithMetadata)
 import           Codec.Picture.Metadata as Meta (Keys (DpiX, DpiY, Format, Height, Width),
                                                  Metadatas, lookup)
+import           Data.Aeson             (Value (Object))
+import           Data.HashMap.Strict    (fromList)
 
 newtype IMG = IMG DynamicImage deriving (Eq)
 
@@ -24,26 +29,30 @@ main :: IO ()
 main = do
   scraped_url <- scrapURL NodeArgs{targetURL = raw_url, proxyHost = Nothing}
   scraped_img <- scrapIMG NodeArgs{targetURL = img_url, proxyHost = Nothing}
+  scraped_json <- scrapJSON (NodeScript "test/scrap-json.js") NodeArgs{targetURL = json_url, proxyHost = Nothing}
   Right (expected_img_value, expected_img_metadatas) <- readImageWithMetadata "test/wiki-logo.jpg"
   defaultMain (testGroup "Happeteer Tests" (
     scrapURLTest scraped_url ++
     scrapIMGMetadatasTest scraped_img expected_img_metadatas ++
-    scrapIMGValueTest scraped_img expected_img_value))
+    scrapIMGValueTest scraped_img expected_img_value ++
+    scrapJSONTest scraped_json))
   where
     Just raw_url = importURL "http://google.com"
     Just img_url = importURL "https://upload.wikimedia.org/wikipedia/commons/3/31/Wiki_logo_Nupedia.jpg"
+    Just json_url = importURL "https://www.wikipedia.org/"
 
 scrapURLTest :: Scraped URL -> [TestTree]
 scrapURLTest scraped_url =
-  [testCase "Testing scrapURL" (assertEqual "Follow redirect google.com" expected_result scraped_url)]
+  [testCase "Testing scrapURL" (assertEqual "Follow redirect google.com" expected_url scraped_url)]
   where
+    expected_std_out :: String
     expected_std_out =
       "https://www.google.com/?gws_rd=ssl"
-    Just expected_url =
+    Just expected_url_content =
       importURL expected_std_out
-    expected_result =
+    expected_url =
       Scraped{
-        content = Right expected_url,
+        content = Right expected_url_content,
         abstract = AbstractScraped {
           exitCode = ExitSuccess,
           stdOut   = expected_std_out,
@@ -64,3 +73,20 @@ scrapIMGValueTest :: Scraped (DynamicImage, Metadatas) -> DynamicImage -> [TestT
 scrapIMGValueTest Scraped{content = Right (scraped_image, _)} expected_image = [
     testCase "Testing scrapIMG Value" (assertEqual "DynamicImage" (IMG scraped_image) (IMG expected_image))
   ]
+
+scrapJSONTest :: Scraped Value -> [TestTree]
+scrapJSONTest scraped_json =
+  [testCase "Testing scrapJSON" (assertEqual "hello world object" expected_json scraped_json)]
+  where
+    expected_std_out :: String
+    expected_std_out =
+      "{\"hello\":\"world\"}"
+    expected_json =
+      Scraped{
+        content = Right $ Object $ fromList [("hello", "world")],
+        abstract = AbstractScraped {
+          exitCode = ExitSuccess,
+          stdOut   = expected_std_out,
+          stdErr   = ""
+        }
+      }

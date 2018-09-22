@@ -4,27 +4,31 @@ module Happeteer
     ( scrapData,
       scrapURL,
       scrapIMG,
+      scrapJSON,
       AbstractScraped (..),
       Scraped (..),
       NodeScript (..),
       NodeArgs (..)
     ) where
 
-import qualified Codec.Picture          (DynamicImage, decodeImageWithMetadata)
-import qualified Codec.Picture.Metadata (Metadatas)
-import qualified Control.Concurrent     (threadDelay)
-import qualified Data.ByteString.Base64 (decode)
-import qualified Data.ByteString.Char8  (pack)
-import qualified Data.Text              (pack, strip, unpack)
-import qualified GHC.IO.Handle          (hGetContents)
-import qualified Network.URL            (Host, URL, exportHost, exportURL,
-                                         importURL)
-import qualified System.Exit            (ExitCode,
-                                         ExitCode (ExitFailure, ExitSuccess))
-import qualified System.Process         (CreateProcess (..), ProcessHandle,
-                                         StdStream (CreatePipe), createProcess,
-                                         getProcessExitCode, proc,
-                                         terminateProcess)
+import qualified Codec.Picture              (DynamicImage,
+                                             decodeImageWithMetadata)
+import qualified Codec.Picture.Metadata     (Metadatas)
+import qualified Control.Concurrent         (threadDelay)
+import qualified Data.Aeson                 (Value, eitherDecode)
+import qualified Data.ByteString.Base64     (decode)
+import qualified Data.ByteString.Char8      (pack)
+import qualified Data.ByteString.Lazy.Char8 (pack)
+import qualified Data.Text                  (pack, strip, unpack)
+import qualified GHC.IO.Handle              (hGetContents)
+import qualified Network.URL                (Host, URL, exportHost, exportURL,
+                                             importURL)
+import qualified System.Exit                (ExitCode,
+                                             ExitCode (ExitFailure, ExitSuccess))
+import qualified System.Process             (CreateProcess (..), ProcessHandle,
+                                             StdStream (CreatePipe),
+                                             createProcess, getProcessExitCode,
+                                             proc, terminateProcess)
 
 newtype NodeScript = NodeScript String
 
@@ -90,6 +94,15 @@ scrapIMG node_args =
       case Data.ByteString.Base64.decode $ Data.ByteString.Char8.pack std_out of
         Right std_out_bytes -> Codec.Picture.decodeImageWithMetadata std_out_bytes
         Left error_message -> Left error_message
+
+scrapJSON :: NodeScript -> NodeArgs -> IO (Scraped Data.Aeson.Value)
+scrapJSON node_script node_args =
+  scrapData node_script node_args parser
+  where
+    parser :: String -> Either String Data.Aeson.Value
+    parser std_out =
+      Data.Aeson.eitherDecode $ Data.ByteString.Lazy.Char8.pack std_out
+
 
 -----------------------
 -- private functions --

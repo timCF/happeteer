@@ -40,6 +40,10 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - JuicyPixels-3.3.1
+- aeson-1.4.0.0
+- text-1.2.3.0
+- th-abstraction-0.2.8.0
+- unordered-containers-0.2.9.0
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
