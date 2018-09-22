@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 
 module Happeteer
     ( scrapData,
@@ -19,8 +20,9 @@ import qualified Data.Aeson                 (Value, eitherDecode)
 import qualified Data.ByteString.Base64     (decode)
 import qualified Data.ByteString.Char8      (pack)
 import qualified Data.ByteString.Lazy.Char8 (pack)
-import qualified Data.Text                  (pack, strip, unpack)
+import qualified Data.Text                  (Text, pack, strip, unpack)
 import qualified GHC.IO.Handle              (hGetContents)
+import qualified NeatInterpolation          (text)
 import qualified Network.URL                (Host, URL, exportHost, exportURL,
                                              importURL)
 import qualified System.Exit                (ExitCode,
@@ -30,7 +32,7 @@ import qualified System.Process             (CreateProcess (..), ProcessHandle,
                                              createProcess, getProcessExitCode,
                                              proc, terminateProcess)
 
-newtype NodeScript = NodeScript String
+newtype NodeScript = NodeScript Data.Text.Text
 
 data NodeArgs = NodeArgs {
   targetURL :: Network.URL.URL,
@@ -76,8 +78,10 @@ scrapData node_script node_args parser = do
 -- resolve URL (follow redirect etc)
 scrapURL :: NodeArgs -> IO (Scraped Network.URL.URL)
 scrapURL node_args =
-  scrapData (NodeScript "js/scrap-url.js") node_args parser
+  scrapData node_script node_args parser
   where
+    node_script :: NodeScript
+    node_script = NodeScript "() => window.location.href"
     parser :: String -> Either String Network.URL.URL
     parser std_out =
       case Network.URL.importURL std_out of
@@ -87,8 +91,28 @@ scrapURL node_args =
 -- download picture
 scrapIMG :: NodeArgs -> IO (Scraped (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas))
 scrapIMG node_args =
-  scrapData (NodeScript "js/scrap-image-base64.js") node_args parser
+  scrapData node_script node_args parser
   where
+    node_script :: NodeScript
+    node_script =
+      NodeScript [NeatInterpolation.text|
+        (async () => {
+          const arrayBufferToBase64 = (buffer) => {
+            var binary = '';
+            var bytes = [].slice.call(new Uint8Array(buffer));
+            bytes.forEach((b) => binary += String.fromCharCode(b));
+            return window.btoa(binary);
+          };
+
+          const response = await fetch(document.querySelector("img").src);
+          if (!response.ok) {
+            throw new Error(`Could not fetch image, (status ${response.status}`);
+          }
+
+          const image_binary = await response.arrayBuffer();
+          return arrayBufferToBase64(image_binary);
+        })
+      |]
     parser :: String -> Either String (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas)
     parser std_out =
       case eitherExplain "scrapIMG failed - can't decode Base64, error: " $ Data.ByteString.Base64.decode $ Data.ByteString.Char8.pack std_out of
@@ -144,13 +168,9 @@ safeWaitForProcess ph elapsed_time
 
 -- abstract scraping of stdout
 scrap :: NodeScript -> NodeArgs -> IO AbstractScraped
-scrap (NodeScript string_script) NodeArgs{targetURL = target_url, proxyHost = mb_proxy_host} =
+scrap node_script node_args =
   let
-    proxy_host =
-      case mb_proxy_host of
-        Just host -> ["--proxy-server=" ++ Network.URL.exportHost host]
-        Nothing   -> []
-    process_spec = (System.Process.proc "node" ([string_script, Network.URL.exportURL target_url] ++ proxy_host ++ ["--no-sandbox"])){
+    process_spec = (System.Process.proc "node" ["-e", jsTemplate node_script node_args]){
       System.Process.std_out = System.Process.CreatePipe,
       System.Process.std_err = System.Process.CreatePipe
     }
@@ -164,3 +184,35 @@ scrap (NodeScript string_script) NodeArgs{targetURL = target_url, proxyHost = mb
       stdOut   = Data.Text.unpack $ Data.Text.strip $ Data.Text.pack std_out,
       stdErr   = std_err
     }
+
+-- generic JS template for web-scraping
+jsTemplate :: NodeScript -> NodeArgs -> String
+jsTemplate (NodeScript node_script_text) NodeArgs{targetURL = target_url, proxyHost = mb_proxy_host} =
+  let
+    js_injection_text =
+      Data.Text.pack $ show node_script_text
+    target_url_text =
+      Data.Text.pack $ show $ Network.URL.exportURL target_url
+    chromium_args_text =
+      Data.Text.pack $ show $ case mb_proxy_host of
+        Just host -> ["--proxy-server=" ++ Network.URL.exportHost host, "--no-sandbox"]
+        Nothing   -> ["--no-sandbox"]
+    script_text =
+      [NeatInterpolation.text|
+        const puppeteer = require('puppeteer');
+        (async () => {
+          const browser = await puppeteer.launch({args: $chromium_args_text});
+          const page = await browser.newPage();
+          await page.goto($target_url_text,
+                          {
+                            waitUntil: ["load", "domcontentloaded", "networkidle0"],
+                            timeout: 0,
+                          });
+
+          const data = await page.evaluate(() => eval($js_injection_text)());
+          console.log(data);
+          await browser.close();
+        })();
+      |]
+  in
+    filter (/= '\n') $ Data.Text.unpack script_text

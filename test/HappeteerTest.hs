@@ -29,7 +29,7 @@ main :: IO ()
 main = do
   scraped_url <- scrapURL NodeArgs{targetURL = raw_url, proxyHost = Nothing}
   scraped_img <- scrapIMG NodeArgs{targetURL = img_url, proxyHost = Nothing}
-  scraped_json <- scrapJSON (NodeScript "test/scrap-json.js") NodeArgs{targetURL = json_url, proxyHost = Nothing}
+  scraped_json <- scrapJSON (NodeScript "() => JSON.stringify({\"hello\":\"world\"})") NodeArgs{targetURL = json_url, proxyHost = Nothing}
   Right (expected_img_value, expected_img_metadatas) <- readImageWithMetadata "test/wiki-logo.jpg"
   defaultMain (testGroup "Happeteer Tests" (
     scrapURLTest scraped_url ++
