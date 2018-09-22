@@ -35,7 +35,7 @@ newtype NodeScript = NodeScript String
 data NodeArgs = NodeArgs {
   targetURL :: Network.URL.URL,
   proxyHost :: Maybe Network.URL.Host
-}
+} deriving (Show, Eq, Ord)
 
 data AbstractScraped = AbstractScraped {
   exitCode :: System.Exit.ExitCode,
@@ -82,7 +82,7 @@ scrapURL node_args =
     parser std_out =
       case Network.URL.importURL std_out of
         Just parsed_url -> Right parsed_url
-        Nothing -> Left $ "can not parse URL, bad stdout: " ++ std_out
+        Nothing         -> Left "scrapURL failed - can't parse URL"
 
 -- download picture
 scrapIMG :: NodeArgs -> IO (Scraped (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas))
@@ -91,8 +91,8 @@ scrapIMG node_args =
   where
     parser :: String -> Either String (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas)
     parser std_out =
-      case Data.ByteString.Base64.decode $ Data.ByteString.Char8.pack std_out of
-        Right std_out_bytes -> Codec.Picture.decodeImageWithMetadata std_out_bytes
+      case eitherExplain "scrapIMG failed - can't decode Base64, error: " $ Data.ByteString.Base64.decode $ Data.ByteString.Char8.pack std_out of
+        Right std_out_bytes -> eitherExplain "scrapIMG failed - can't decode ByteString, error: " $ Codec.Picture.decodeImageWithMetadata std_out_bytes
         Left error_message -> Left error_message
 
 scrapJSON :: NodeScript -> NodeArgs -> IO (Scraped Data.Aeson.Value)
@@ -101,12 +101,16 @@ scrapJSON node_script node_args =
   where
     parser :: String -> Either String Data.Aeson.Value
     parser std_out =
-      Data.Aeson.eitherDecode $ Data.ByteString.Lazy.Char8.pack std_out
+      eitherExplain "scrapJSON failed - can't decode JSON, error: " $ Data.Aeson.eitherDecode $ Data.ByteString.Lazy.Char8.pack std_out
 
 
 -----------------------
 -- private functions --
 -----------------------
+
+eitherExplain :: String -> Either String t -> Either String t
+eitherExplain explanation_prefix (Left error_message) = Left $ explanation_prefix ++ error_message
+eitherExplain _ (Right success) = Right success
 
 sleepMS :: Integer -> IO ()
 sleepMS t =
