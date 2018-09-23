@@ -193,10 +193,14 @@ jsTemplate (JS2Eval js2eval_raw_text) ChromiumArgs{targetURL = target_url, proxy
       Data.Text.pack $ show js2eval_raw_text
     target_url_text =
       Data.Text.pack $ show $ Network.URL.exportURL target_url
+    chromium_security_args :: [String]
+    chromium_security_args =
+      -- ["--no-sandbox"]
+      []
     chromium_args_text =
       Data.Text.pack $ show $ case mb_proxy_host of
-        Just host -> ["--proxy-server=" ++ Network.URL.exportHost host, "--no-sandbox"]
-        Nothing   -> ["--no-sandbox"]
+        Just host -> ("--proxy-server=" ++ Network.URL.exportHost host) : chromium_security_args
+        Nothing   -> chromium_security_args
     script_text =
       [NeatInterpolation.text|
         const puppeteer = require('puppeteer');
