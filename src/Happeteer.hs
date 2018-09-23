@@ -8,8 +8,8 @@ module Happeteer
       scrapJSON,
       AbstractScraped (..),
       Scraped (..),
-      NodeScript (..),
-      NodeArgs (..)
+      JS2Eval (..),
+      ChromiumArgs (..)
     ) where
 
 import qualified Codec.Picture              (DynamicImage,
@@ -32,9 +32,9 @@ import qualified System.Process             (CreateProcess (..), ProcessHandle,
                                              createProcess, getProcessExitCode,
                                              proc, terminateProcess)
 
-newtype NodeScript = NodeScript Data.Text.Text
+newtype JS2Eval = JS2Eval Data.Text.Text
 
-data NodeArgs = NodeArgs {
+data ChromiumArgs = ChromiumArgs {
   targetURL :: Network.URL.URL,
   proxyHost :: Maybe Network.URL.Host
 } deriving (Show, Eq, Ord)
@@ -55,9 +55,9 @@ data Scraped content = Scraped {
 --------------------------
 
 -- scrap some data t
-scrapData :: NodeScript -> NodeArgs -> (String -> Either String t) -> IO (Scraped t)
-scrapData node_script node_args parser = do
-  abstract_scraped <- scrap node_script node_args
+scrapData :: JS2Eval -> ChromiumArgs -> (String -> Either String t) -> IO (Scraped t)
+scrapData js2eval chromium_args parser = do
+  abstract_scraped <- scrap js2eval chromium_args
   case abstract_scraped of
     AbstractScraped{
       exitCode = System.Exit.ExitSuccess,
@@ -76,12 +76,12 @@ scrapData node_script node_args parser = do
       }
 
 -- resolve URL (follow redirect etc)
-scrapURL :: NodeArgs -> IO (Scraped Network.URL.URL)
-scrapURL node_args =
-  scrapData node_script node_args parser
+scrapURL :: ChromiumArgs -> IO (Scraped Network.URL.URL)
+scrapURL chromium_args =
+  scrapData js2eval chromium_args parser
   where
-    node_script :: NodeScript
-    node_script = NodeScript "() => window.location.href"
+    js2eval :: JS2Eval
+    js2eval = JS2Eval "() => window.location.href"
     parser :: String -> Either String Network.URL.URL
     parser std_out =
       case Network.URL.importURL std_out of
@@ -89,13 +89,13 @@ scrapURL node_args =
         Nothing         -> Left "scrapURL failed - can't parse URL"
 
 -- download picture
-scrapIMG :: NodeArgs -> IO (Scraped (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas))
-scrapIMG node_args =
-  scrapData node_script node_args parser
+scrapIMG :: ChromiumArgs -> IO (Scraped (Codec.Picture.DynamicImage, Codec.Picture.Metadata.Metadatas))
+scrapIMG chromium_args =
+  scrapData js2eval chromium_args parser
   where
-    node_script :: NodeScript
-    node_script =
-      NodeScript [NeatInterpolation.text|
+    js2eval :: JS2Eval
+    js2eval =
+      JS2Eval [NeatInterpolation.text|
         (async () => {
           const arrayBufferToBase64 = (buffer) => {
             var binary = '';
@@ -119,9 +119,9 @@ scrapIMG node_args =
         Right std_out_bytes -> eitherExplain "scrapIMG failed - can't decode ByteString, error: " $ Codec.Picture.decodeImageWithMetadata std_out_bytes
         Left error_message -> Left error_message
 
-scrapJSON :: NodeScript -> NodeArgs -> IO (Scraped Data.Aeson.Value)
-scrapJSON node_script node_args =
-  scrapData node_script node_args parser
+scrapJSON :: JS2Eval -> ChromiumArgs -> IO (Scraped Data.Aeson.Value)
+scrapJSON js2eval chromium_args =
+  scrapData js2eval chromium_args parser
   where
     parser :: String -> Either String Data.Aeson.Value
     parser std_out =
@@ -167,10 +167,10 @@ safeWaitForProcess ph elapsed_time
     processInterval = 500000
 
 -- abstract scraping of stdout
-scrap :: NodeScript -> NodeArgs -> IO AbstractScraped
-scrap node_script node_args =
+scrap :: JS2Eval -> ChromiumArgs -> IO AbstractScraped
+scrap js2eval chromium_args =
   let
-    process_spec = (System.Process.proc "node" ["-e", jsTemplate node_script node_args]){
+    process_spec = (System.Process.proc "node" ["-e", jsTemplate js2eval chromium_args]){
       System.Process.std_out = System.Process.CreatePipe,
       System.Process.std_err = System.Process.CreatePipe
     }
@@ -186,11 +186,11 @@ scrap node_script node_args =
     }
 
 -- generic JS template for web-scraping
-jsTemplate :: NodeScript -> NodeArgs -> String
-jsTemplate (NodeScript node_script_text) NodeArgs{targetURL = target_url, proxyHost = mb_proxy_host} =
+jsTemplate :: JS2Eval -> ChromiumArgs -> String
+jsTemplate (JS2Eval js2eval_raw_text) ChromiumArgs{targetURL = target_url, proxyHost = mb_proxy_host} =
   let
-    js_injection_text =
-      Data.Text.pack $ show node_script_text
+    js2eval_text =
+      Data.Text.pack $ show js2eval_raw_text
     target_url_text =
       Data.Text.pack $ show $ Network.URL.exportURL target_url
     chromium_args_text =
@@ -209,7 +209,7 @@ jsTemplate (NodeScript node_script_text) NodeArgs{targetURL = target_url, proxyH
                             timeout: 0,
                           });
 
-          const data = await page.evaluate(() => eval($js_injection_text)());
+          const data = await page.evaluate(() => eval($js2eval_text)());
           console.log(data);
           await browser.close();
         })();
