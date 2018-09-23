@@ -36,7 +36,8 @@ newtype JS2Eval = JS2Eval Data.Text.Text
 
 data ChromiumArgs = ChromiumArgs {
   targetURL :: Network.URL.URL,
-  proxyHost :: Maybe Network.URL.Host
+  proxyHost :: Maybe Network.URL.Host,
+  sandbox   :: Bool
 } deriving (Show, Eq, Ord)
 
 data AbstractScraped = AbstractScraped {
@@ -187,7 +188,7 @@ scrap js2eval chromium_args =
 
 -- generic JS template for web-scraping
 jsTemplate :: JS2Eval -> ChromiumArgs -> String
-jsTemplate (JS2Eval js2eval_raw_text) ChromiumArgs{targetURL = target_url, proxyHost = mb_proxy_host} =
+jsTemplate (JS2Eval js2eval_raw_text) ChromiumArgs{targetURL = target_url, proxyHost = mb_proxy_host, sandbox = sand_box} =
   let
     js2eval_text =
       Data.Text.pack $ show js2eval_raw_text
@@ -195,8 +196,9 @@ jsTemplate (JS2Eval js2eval_raw_text) ChromiumArgs{targetURL = target_url, proxy
       Data.Text.pack $ show $ Network.URL.exportURL target_url
     chromium_security_args :: [String]
     chromium_security_args =
-      -- ["--no-sandbox"]
-      []
+      if sand_box
+        then []
+        else ["--no-sandbox"]
     chromium_args_text =
       Data.Text.pack $ show $ case mb_proxy_host of
         Just host -> ("--proxy-server=" ++ Network.URL.exportHost host) : chromium_security_args

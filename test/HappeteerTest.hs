@@ -9,7 +9,7 @@ import           Test.Tasty             (TestTree, defaultMain, testGroup)
 import           Test.Tasty.HUnit       (assertEqual, testCase)
 
 import           Happeteer              (AbstractScraped (AbstractScraped, exitCode, stdErr, stdOut),
-                                         ChromiumArgs (ChromiumArgs, proxyHost, targetURL),
+                                         ChromiumArgs (ChromiumArgs, proxyHost, sandbox, targetURL),
                                          JS2Eval (JS2Eval),
                                          Scraped (Scraped, abstract, content),
                                          scrapIMG, scrapJSON, scrapURL)
@@ -27,9 +27,9 @@ instance Show IMG where
 
 main :: IO ()
 main = do
-  scraped_url <- scrapURL ChromiumArgs{targetURL = raw_url, proxyHost = Nothing}
-  scraped_img <- scrapIMG ChromiumArgs{targetURL = img_url, proxyHost = Nothing}
-  scraped_json <- scrapJSON (JS2Eval "() => JSON.stringify({\"hello\":\"world\"})") ChromiumArgs{targetURL = json_url, proxyHost = Nothing}
+  scraped_url <- scrapURL ChromiumArgs{targetURL = raw_url, proxyHost = Nothing, sandbox = True}
+  scraped_img <- scrapIMG ChromiumArgs{targetURL = img_url, proxyHost = Nothing, sandbox = True}
+  scraped_json <- scrapJSON scrap_json_js ChromiumArgs{targetURL = json_url, proxyHost = Nothing, sandbox = True}
   Right (expected_img_value, expected_img_metadatas) <- readImageWithMetadata "test/wiki-logo.jpg"
   defaultMain (testGroup "Happeteer Tests" (
     scrapURLTest scraped_url ++
@@ -37,6 +37,7 @@ main = do
     scrapIMGValueTest scraped_img expected_img_value ++
     scrapJSONTest scraped_json))
   where
+    scrap_json_js = JS2Eval "() => JSON.stringify({\"hello\":\"world\"})"
     Just raw_url = importURL "http://google.com"
     Just img_url = importURL "https://upload.wikimedia.org/wikipedia/commons/3/31/Wiki_logo_Nupedia.jpg"
     Just json_url = importURL "https://www.wikipedia.org/"
