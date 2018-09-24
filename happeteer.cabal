@@ -1,49 +1,64 @@
-name:                happeteer
-version:             0.1.0.0
--- synopsis:
--- description:
-homepage:            https://github.com/githubuser/happeteer#readme
-license:             BSD3
-license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2018 Author name here
-category:            Web
-build-type:          Simple
-extra-source-files:  README.md
-cabal-version:       >=1.10
+-- This file has been generated from package.yaml by hpack version 0.28.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 6f0c6a25eac4a132258de893da878d1d8994060ba07b4be08ecddbef218b4c68
+
+name:           happeteer
+version:        0.1.0.0
+category:       Web
+homepage:       https://github.com/githubuser/happeteer#readme
+bug-reports:    https://github.com/githubuser/happeteer/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2018 Author name here
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+extra-source-files:
+    README.md
 
 source-repository head
-  type:     git
+  type: git
   location: https://github.com/githubuser/happeteer
 
 library
-  hs-source-dirs:      src
-  exposed-modules:     Happeteer
-  build-depends:       base >= 4.7 && < 5
-                    ,  process >= 1.4 && < 1.5
-                    ,  containers >= 0.5 && < 0.7
-                    ,  url >= 2.1 && < 2.2
-                    ,  text >= 1.2 && < 1.3
-                    ,  JuicyPixels >= 3.3 && < 3.4
-                    ,  bytestring >= 0.10 && < 0.11
-                    ,  base64-bytestring >= 1.0 && < 1.1
-                    ,  aeson >= 1.4 && < 1.5
-                    ,  neat-interpolation >= 0.3.2 && < 0.4
-  ghc-options:         -Weverything -Wno-unsafe -Wno-implicit-prelude -Wno-safe -Werror
-  default-language:    Haskell2010
+  exposed-modules:
+      Happeteer
+  other-modules:
+      Paths_happeteer
+  hs-source-dirs:
+      src
+  ghc-options: -Weverything -Wno-unsafe -Wno-implicit-prelude -Wno-safe -Werror
+  build-depends:
+      JuicyPixels >=3.2.9.5
+    , aeson >=1.2.4.0
+    , base >=4.10.1.0
+    , base64-bytestring >=1.0.0.1
+    , bytestring >=0.10.8.2
+    , containers >=0.5.10.2
+    , neat-interpolation >=0.3.2.1
+    , process >=1.6.1.0
+    , text >=1.2.3.0
+    , url >=2.1.3
+  default-language: Haskell2010
 
 test-suite lib-test
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      test
-  main-is:             HappeteerTest.hs
-  build-depends:       base
-                     , tasty
-                     , tasty-hunit
-                     , happeteer
-                     , url >= 2.1 && < 2.2
-                     , JuicyPixels >= 3.3 && < 3.4
-                     , aeson >= 1.4 && < 1.5
-                     , unordered-containers >= 0.2.9 && < 0.3
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
-  default-language:    Haskell2010
+  type: exitcode-stdio-1.0
+  main-is: HappeteerTest.hs
+  other-modules:
+      Paths_happeteer
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      JuicyPixels >=3.2.9.5
+    , aeson >=1.2.4.0
+    , base >=4.10.1.0
+    , happeteer
+    , tasty >=1.0.1.1
+    , tasty-hunit >=0.10.0.1
+    , unordered-containers >=0.2.9.0
+    , url >=2.1.3
+  default-language: Haskell2010
